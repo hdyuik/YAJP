@@ -6,6 +6,9 @@ __all__ = [
     'MissQuotationMark',
     'InvalidControlCharacter',
     'MissBracketForArray',
+    'NoColonAfterKey',
+    'MissBraceForObj',
+    'MissComma',
 ]
 
 
@@ -40,4 +43,16 @@ class InvalidControlCharacter(ParseError):
 
 
 class MissBracketForArray(ParseError):
+    pass
+
+
+class NoColonAfterKey(ParseError):
+    pass
+
+
+class MissBraceForObj(ParseError):
+    pass
+
+
+class MissComma(ParseError):
     pass

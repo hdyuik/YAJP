@@ -1,203 +1,187 @@
+from .context import Context
 from .errors import *
-# class Input:
-#     def __init__(self, text):
-#         self.text = text
-#         self._length = len(text)
-#         self._now = 0
-#
-#     def next(self):
-#         if self._now >= self._length:
-#             return '\0'
-#         else:
-#             char = self.text[self._now]
-#             self._now += 1
-#             return char
+DIGIT = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+DIGIT_1_9 = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 
-def reach_end(json, at):
-    assert not at > len(json)
-    return at == len(json)
+def filter_space(context):
+    while context.accept(' ', '\r', '\n', '\t'):
+        pass
 
 
-def filter_space(json, at):
-    while at < len(json) and json[at] in [' ', '\t', '\n', '\r']:
-        at += 1
-    return json, at
+def match_literal(context, string):
+    for char in string:
+        if not context.accept(char):
+            raise InvalidInput(context.pointer)
+    return True
 
 
-def parse_null(json, at):
-    if json[at:at + 4] != 'null':
-        raise InvalidInput(at)
+def parse_null(context):
+    if match_literal(context, 'ull'):
+        return None
+
+
+def parse_true(context):
+    if match_literal(context, 'rue'):
+        return True
+
+
+def parse_false(context):
+    if match_literal(context, 'alse'):
+        return False
+
+
+def parse_number(context):
+    i = context.pointer
+    context.pointer -= 1
+
+    context.accept('-')
+
+    if context.accept('0'):
+        pass
+    elif context.accept(*DIGIT_1_9):
+        while context.accept(*DIGIT):
+            pass
     else:
-        at += 4
-        return None, at
+        raise InvalidInput(context.pointer)
 
-
-def parse_true(json, at):
-    if json[at:at + 4] != 'true':
-        raise InvalidInput(at)
-    else:
-        at += 4
-        return True, at
-
-
-def parse_false(json, at):
-    if json[at:at + 5] != 'false':
-        raise InvalidInput(at)
-    else:
-        at += 5
-        return False, at
-
-
-def parse_number(json, at):
-    assert not reach_end(json, at)
-    dup = at
-    if json[dup] == '-':
-        dup += 1
-
-    if (not reach_end(json, dup)) and json[dup] == '0':
-        dup += 1
-    elif (not reach_end(json, dup)) and (json[dup] in (str(i) for i in range(1, 10))):
-        dup += 1
-        while (not reach_end(json, dup)) and (json[dup] in (str(i) for i in range(0, 10))):
-            dup += 1
-    else:
-        raise InvalidInput(dup)
-
-    if (not reach_end(json, dup)) and json[dup] == '.':
-        dup += 1
-        if (not reach_end(json, dup)) and json[dup] in (str(i) for i in range(0, 10)):
-            dup += 1
-            while (not reach_end(json, dup)) and (json[dup] in (str(i) for i in range(0, 10))):
-                dup += 1
-        else:
-            raise InvalidInput(dup)
-
-    if (not reach_end(json, dup)) and (json[dup] in ('e', 'E')):
-        dup += 1
-        if json[dup] in ('-', '+'):
-            dup += 1
-        if (not reach_end(json, dup)) and json[dup] in (str(i) for i in range(0, 10)):
-            dup += 1
-            while (not reach_end(json, dup)) and json[dup] in (str(i) for i in range(0, 10)):
-                dup += 1
-        else:
-            raise InvalidInput(dup)
-
-    result = float(json[at:dup])
-    return result, dup
-
-
-def parse_string(json, at):
-    assert (not reach_end(json, at)) and json[at] == '\"'
-    at += 1
-    s = ""
-    while True:
-        if reach_end(json, at):
-            raise MissQuotationMark(at)
-        elif json[at] == '"':
-            at += 1
-            return s, at
-        elif json[at] == '\\':
-            at += 1
-            if json[at] == '\"':
-                s += '\"'
-                at += 1
-            elif json[at] == '\\':
-                s += '\\'
-                at += 1
-            elif json[at] == '/':
-                s += '/'
-                at += 1
-            elif json[at] == 'b':
-                s += '\b'
-                at += 1
-            elif json[at] == 'f':
-                s += '\f'
-                at += 1
-            elif json[at] == 'n':
-                s += '\n'
-                at += 1
-            elif json[at] == 'r':
-                s += '\r'
-                at += 1
-            elif json[at] == 't':
-                s += '\t'
-                at += 1
-            else:
-                # utf-escape
+    if context.accept('.'):
+        if context.accept(*DIGIT):
+            while context.accept(*DIGIT):
                 pass
-        elif ord(json[at]) < 32:
-            raise InvalidControlCharacter(at)
         else:
-            s += json[at]
-            at += 1
+            raise InvalidInput(context.pointer)
+
+    if context.accept('e', 'E'):
+        context.accept('+', '-')
+        if context.accept(*DIGIT):
+            while context.accept(*DIGIT):
+                ...
+        else:
+            raise InvalidInput(context.pointer)
+
+    return float(context[i:context.pointer+1])
 
 
-def parse_array(json, at):
-    assert (not reach_end(json, at) and (json[at] == '['))
-    at += 1
+def parse_string(context):
+    s = ""
+
+    while True:
+        if context.end():
+            raise MissQuotationMark(context.pointer)
+        elif context.accept('\"'):
+            return s
+        elif context.accept('\\'):
+            s += parse_escape(context)
+        elif ord(context.peek()) < 32:
+            raise InvalidControlCharacter(context.pointer)
+        else:
+            s += context.forward()
+
+
+def parse_escape(context):
+    d = {
+        '\"': lambda ctx: '\"',
+        '\\': lambda ctx: '\\',
+        '/': lambda ctx: '/',
+        'b': lambda ctx: '\b',
+        'f': lambda ctx: '\f',
+        'n': lambda ctx: '\n',
+        'r': lambda ctx: '\r',
+        't': lambda ctx: '\t',
+        'u': parse_unicode,
+    }
+    func = d.get(context.peek(), None)
+    if func is None:
+        raise InvalidInput(context.pointer)
+    else:
+        context.forward()
+        return func(context)
+
+
+def parse_unicode(context):
+    raise NotImplementedError()
+
+
+def parse_array(context):
     ls = []
-    if reach_end(json, at):
-        raise MissBracketForArray(at)
-
-    json, at = filter_space(json, at)
-    if json[at] == ']':
+    filter_space(context)
+    if context.accept(']'):
         return ls
     while True:
-        if reach_end(json, at):
-            raise MissBracketForArray(at)
-
-        json, at = filter_space(json, at)
-        if reach_end(json, at):
-            raise MissBracketForArray(at)
-
-        item, at = parse_at(json, at)
-        if reach_end(json, at):
-            raise MissBracketForArray(at)
-
+        if context.end():
+            raise MissBracketForArray(context.pointer)
+        item = parse_at(context)
+        filter_space(context)
         ls.append(item)
-        json, at = filter_space(json, at)
-        if reach_end(json, at):
-            raise MissBracketForArray(at)
-
-        if json[at] == ']':
-            at += 1
-            return ls, at
-        if json[at] == ',':
-            at += 1
+        if context.accept(']'):
+            return ls
+        elif context.accept(','):
+            filter_space(context)
+        else:
+            raise MissComma(context.pointer)
 
 
-def parse_at(json, at):
+def parse_obj(context):
+    obj = {}
+    filter_space(context)
+    if context.accept('}'):
+        return obj
+    while True:
+        if context.end():
+            raise MissBraceForObj(context.pointer)
 
-    if json[at] == 'n':
-        return parse_null(json, at)
-    elif json[at] == 't':
-        return parse_true(json, at)
-    elif json[at] == 'f':
-        return parse_false(json, at)
-    elif json[at] == '\"':
-        return parse_string(json, at)
-    elif json[at] == '[':
-        return parse_array(json, at)
-    else:
-        return parse_number(json, at)
+        if not context.accept('\"'):
+            raise InvalidInput(context.pointer)
+        key = parse_string(context)
+        filter_space(context)
+
+        if not context.accept(':'):
+            raise NoColonAfterKey(context.pointer)
+        filter_space(context)
+
+        value = parse_at(context)
+        filter_space(context)
+
+        obj[key] = value
+
+        if context.accept('}'):
+            return obj
+        elif context.accept(','):
+            filter_space(context)
+        else:
+            raise MissComma(context.pointer)
+
+
+def parse_at(context):
+    d = {
+        'n': parse_null,
+        't': parse_true,
+        'f': parse_false,
+        '\"': parse_string,
+        '[': parse_array,
+        '{': parse_obj,
+    }
+    default = parse_number
+    func = d.get(context.forward(), default)
+    return func(context)
 
 
 def parse(json):
-    json, at = filter_space(json, 0)
+    context = Context(json)
+    filter_space(context)
 
-    if reach_end(json, at):
-        raise NoInput
+    if context.end():
+        raise NoInput(context.pointer)
 
-    result, at = parse_at(json, at)
+    result = parse_at(context)
 
-    json, at = filter_space(json, at)
+    filter_space(context)
 
-    if not reach_end(json, at):
-        raise RootNotSingular(at)
-
-    return result
+    if context.end():
+        return result
+    else:
+        raise RootNotSingular(context.pointer)
 
 
 def loads(json):

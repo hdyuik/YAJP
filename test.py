@@ -1,4 +1,4 @@
-from traceback import print_exc
+from src.context import Context
 from src.parser import loads
 from src.errors import *
 
@@ -18,6 +18,10 @@ class ExAttrNotMatch(Exception):
             self.key, self.expect, self.actual)
 
 
+def test_right(actual, expect):
+    assert actual == expect, 'test fail: expect: {0}, actual: {1}'.format(expect, actual)
+
+
 def test_error(func, exc, **exc_kvs):
     try:
         func()
@@ -31,19 +35,19 @@ def test_error(func, exc, **exc_kvs):
 
 
 def test_filter_space():
-    assert loads(' \r\n null  \t\r\n') is None
+    test_right(loads(' \r\n null  \t\r\n'), None)
 
 
 def test_parse_null():
-    assert loads('null') is None
+    test_right(loads('null'), None)
 
 
 def test_parse_true():
-    assert loads('true') is True
+    test_right(loads('true'), True)
 
 
 def test_parse_false():
-    assert loads('false') is False
+    test_right(loads('false'), False)
 
 
 def test_parse_number():
@@ -70,57 +74,100 @@ def test_parse_array():
     assert loads('[ 12, \"WTF?\"]') == [12, "WTF?"]
     assert loads('[ 12, \"WTF?\", true]') == [12, "WTF?", True]
     assert loads('[ 12, \"WTF?\", true, false, null, \"YES!\"]') == [12, "WTF?", True, False, None, "YES!"]
+    assert loads('[ 12, \"WTF?\", true, false, null, \"YES!\"]') == [12, "WTF?", True, False, None, "YES!"]
+    assert loads('[ "ha?", {"en": 1, "m": 2}]') == ["ha?", {"en": 1, "m": 2}]
+
+
+def test_parse_obj():
+    test_right(loads('{"1": 5}'), {"1": 5})
+    test_right(loads('{"my"  : [1,2,3]}'), {"my": [1, 2, 3]})
+    test_right(loads('{"my": [2,3,4], "you": [5,6,7]  }'), {"my": [2, 3, 4],
+                                                            "you": [5, 6, 7]})
+    test_right(loads('{"ha": true}'), {"ha": True})
 
 
 # error
 def test_no_input():
-    test_error(lambda: loads(''), NoInput, at=0)
-    test_error(lambda: loads('\r\t\n'), NoInput, at=3)
+    test_error(lambda: loads(''), NoInput)
+    test_error(lambda: loads('\r\t\n'), NoInput)
 
 
 def test_invalid_input():
-    test_error(lambda: loads("ok"), InvalidInput, at=0)
+    test_error(lambda: loads("ok"), InvalidInput)
 
 
 def test_root_not_singular():
-    test_error(lambda: loads('true n'), RootNotSingular, at=5)
+    test_error(lambda: loads('true n'), RootNotSingular)
 
 
 def test_invalid_number():
-    test_error(lambda: loads('123.'), InvalidInput, at=4)
-    test_error(lambda: loads('+123'), InvalidInput, at=0)
+    test_error(lambda: loads('123.'), InvalidInput, at=3)
+    test_error(lambda: loads('+123'), InvalidInput, at=-1)
 
 
 def test_invalid_string():
-    test_error(lambda: loads('\"'), MissQuotationMark, at=1)
-    test_error(lambda: loads('\" \b \"'), InvalidControlCharacter, at=2)
-    test_error(lambda: loads('\" \x1f \"'), InvalidControlCharacter, at=2)
+    test_error(lambda: loads('\"'), MissQuotationMark, at=0)
+    test_error(lambda: loads('\" \b \"'), InvalidControlCharacter, at=1)
+    test_error(lambda: loads('\" \x1f \"'), InvalidControlCharacter, at=1)
 
 
 def test_invalid_array():
-    test_error(lambda: loads('['), MissBracketForArray, at=1)
-    test_error(lambda: loads('[123, ]'), InvalidInput, at=6)
+    test_error(lambda: loads('['), MissBracketForArray, at=0)
+    test_error(lambda: loads('[123, ]'), InvalidInput, at=5)
     test_error(lambda: loads('[123, "jjk'), MissQuotationMark)
+    test_error(lambda: loads('[null233]'), MissComma)
+    test_error(lambda: loads('[truefalse]'), MissComma)
+
+
+def test_invalid_obj():
+    test_error(lambda: loads('{  '), MissBraceForObj)
+    test_error(lambda: loads('{ "ssss'), MissQuotationMark)
+    test_error(lambda: loads('{ "ss": 1, }'), InvalidInput)
+    test_error(lambda: loads('{ "ho": true"false": 1}'), MissComma)
+
+
+def test_context():
+    c = Context('123')
+    test_right(c.peek(), '1')
+    test_right(c.forward(), '1')
+    test_right(c.current(), '1')
+
+    test_right(c.forward(), '2')
+    test_right(c.forward(), '3')
+
+    test_right(c.end(), True)
+
+    c = Context('abc')
+    assert c.accept('a', 'b', 'c') is True
+    assert c.accept('b') is True
+    assert c.accept('a') is False
+
+    c = Context('abc')
+    assert c.accept('abc') is False
 
 
 def test():
-    # test_filter_space()
-    # test_parse_null()
-    # test_parse_true()
-    # test_parse_false()
-    # test_parse_number()
-    # test_parse_string()
-    # test_parse_array()
+    test_filter_space()
+    test_parse_null()
+    test_parse_true()
+    test_parse_false()
+    test_parse_number()
+    test_parse_string()
+    test_parse_array()
+    test_parse_obj()
 
-    # test_no_input()
-    # test_invalid_input()
-    # test_root_not_singular()
-    # test_invalid_number()
-    # test_invalid_string()
+    test_no_input()
+    test_invalid_input()
+    test_root_not_singular()
+    test_invalid_number()
+    test_invalid_string()
     test_invalid_array()
+    test_invalid_obj()
+
+    # test_context()
 
 
 if __name__ == '__main__':
     test()
-    print('test done')
+    print('all test pass')
 
