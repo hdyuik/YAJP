@@ -65,6 +65,8 @@ def test_parse_string():
     assert loads("\"abc\"") == "abc"
     assert loads("\"w\\t\\f\"") == "w\t\f"
     assert loads("\"\\\\ \\\" \\/ \\b \\n \\r\"") == "\\ \" / \b \n \r"
+    test_right(loads('\"\\u20AC\\u5b87\"'), "€宇")
+    test_right(loads('\"\\uD834\\uDD1E\"'), '𝄞')
 
 
 def test_parse_array():
@@ -109,6 +111,14 @@ def test_invalid_string():
     test_error(lambda: loads('\"'), MissQuotationMark, at=0)
     test_error(lambda: loads('\" \b \"'), InvalidControlCharacter, at=1)
     test_error(lambda: loads('\" \x1f \"'), InvalidControlCharacter, at=1)
+    test_error(lambda: loads('\"\\u0ac   \"'), InvalidInput)
+    test_error(lambda: loads('\"\\uZ980 \"'), InvalidInput)
+    test_error(lambda: loads('\"\\u0000'), InvalidControlCharacter)
+    test_error(lambda: loads('\"\\uD834WTF?\"'), InvalidUnicodeSurrogate)
+    test_error(lambda: loads('\"\\uD834\\uC890 \"'), InvalidUnicodeSurrogate)
+
+    # test_right(loads('\"\\uD834\\uDD1E\"'), '𝄞')
+
 
 
 def test_invalid_array():
@@ -164,7 +174,7 @@ def test():
     test_invalid_array()
     test_invalid_obj()
 
-    # test_context()
+    test_context()
 
 
 if __name__ == '__main__':

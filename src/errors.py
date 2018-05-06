@@ -9,6 +9,7 @@ __all__ = [
     'NoColonAfterKey',
     'MissBraceForObj',
     'MissComma',
+    'InvalidUnicodeSurrogate',
 ]
 
 
@@ -55,4 +56,8 @@ class MissBraceForObj(ParseError):
 
 
 class MissComma(ParseError):
+    pass
+
+
+class InvalidUnicodeSurrogate(ParseError):
     pass

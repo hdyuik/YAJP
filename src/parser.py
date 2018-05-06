@@ -2,6 +2,9 @@ from .context import Context
 from .errors import *
 DIGIT = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 DIGIT_1_9 = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+HEX = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+       'A', 'B', 'C', 'D', 'E', 'F',
+       'a', 'b', 'c', 'd', 'e', 'f']
 
 
 def filter_space(context):
@@ -9,6 +12,7 @@ def filter_space(context):
         pass
 
 
+# literal
 def match_literal(context, string):
     for char in string:
         if not context.accept(char):
@@ -31,6 +35,7 @@ def parse_false(context):
         return False
 
 
+# number
 def parse_number(context):
     i = context.pointer
     context.pointer -= 1
@@ -63,6 +68,7 @@ def parse_number(context):
     return float(context[i:context.pointer+1])
 
 
+# string
 def parse_string(context):
     s = ""
 
@@ -91,18 +97,39 @@ def parse_escape(context):
         't': lambda ctx: '\t',
         'u': parse_unicode,
     }
-    func = d.get(context.peek(), None)
+    func = d.get(context.forward(), None)
     if func is None:
         raise InvalidInput(context.pointer)
     else:
-        context.forward()
         return func(context)
 
 
 def parse_unicode(context):
-    raise NotImplementedError()
+    codepoint = parse_codepoint(context)
+    if codepoint < 32:
+        raise InvalidControlCharacter(context.pointer)
+    elif 0xD800 <= codepoint <= 0xDBFF:
+        if not (context.accept('\\') and context.accept('u')):
+            raise InvalidUnicodeSurrogate(context.pointer)
+        low_surrogate = parse_codepoint(context)
+        if not (0xDC00 <= low_surrogate <= 0xDFFF):
+            raise InvalidUnicodeSurrogate(context.pointer)
+        codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + (low_surrogate - 0xDC00)
+
+    return chr(codepoint)
 
 
+def parse_codepoint(context):
+    s = ""
+    for i in range(4):
+        if context.peek() in HEX:
+            s += context.forward()
+        else:
+            raise InvalidInput(context.pointer)
+    return int('0x' + s, 16)
+
+
+# compound
 def parse_array(context):
     ls = []
     filter_space(context)
@@ -111,9 +138,10 @@ def parse_array(context):
     while True:
         if context.end():
             raise MissBracketForArray(context.pointer)
-        item = parse_at(context)
-        filter_space(context)
-        ls.append(item)
+
+        value = parse_value(context)
+        ls.append(value)
+
         if context.accept(']'):
             return ls
         elif context.accept(','):
@@ -131,17 +159,13 @@ def parse_obj(context):
         if context.end():
             raise MissBraceForObj(context.pointer)
 
-        if not context.accept('\"'):
-            raise InvalidInput(context.pointer)
-        key = parse_string(context)
-        filter_space(context)
+        key = parse_key(context)
 
         if not context.accept(':'):
             raise NoColonAfterKey(context.pointer)
         filter_space(context)
 
-        value = parse_at(context)
-        filter_space(context)
+        value = parse_value(context)
 
         obj[key] = value
 
@@ -153,6 +177,21 @@ def parse_obj(context):
             raise MissComma(context.pointer)
 
 
+def parse_key(context):
+    if not context.accept('\"'):
+        raise InvalidInput(context.pointer)
+    key = parse_string(context)
+    filter_space(context)
+    return key
+
+
+def parse_value(context):
+    value = parse_at(context)
+    filter_space(context)
+    return value
+
+
+# entry
 def parse_at(context):
     d = {
         'n': parse_null,
