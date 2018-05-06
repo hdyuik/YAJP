@@ -1,41 +1,58 @@
 class Context:
     def __init__(self, content):
         # pointer to the char that is already parsed
-        assert type(content) is str
         self.content = content
         self.length = len(content)
-        self.pointer = -1
+        self.pointer = 0
 
-    def __getitem__(self, index):
-        if type(index) is slice:
-            assert not index.stop > self.length, 'slice out of index'
-        else:
-            assert not index > self.length, 'offset out of index'
-        if index == self.length:
+    def __getitem__(self, offset):
+        if type(offset) is int and self.pointer == self.length:
             return '\0'
         else:
-            return self.content[index]
+            return self.content[offset]
 
-    def peek(self):
-        assert self.pointer < self.length, 'next out of index'
-        return self[self.pointer+1]
+    def look(self, forward=True):
+        if forward:
+            return self[self.pointer]
+        else:
+            return self[self.pointer-1]
 
-    def current(self):
-        assert self.pointer < self.length, 'current out of index'
-        assert self.pointer != -1, 'not start '
-        return self[self.pointer]
-
-    def forward(self):
-        self.pointer += 1
-        assert self.pointer < self.length, 'forward out of index'
-        return self[self.pointer]
+    def move(self, forward=True):
+        if forward:
+            char = self[self.pointer]
+            self.pointer += 1
+            return char
+        else:
+            self.pointer -= 1
+            return self[self.pointer]
 
     def accept(self, *char):
-        if self.peek() in char:
-            self.forward()
+        if self.look() in char:
+            self.move()
             return True
         else:
             return False
 
+    def head(self):
+        return self.pointer == -1
+
     def end(self):
-        return self.peek() == '\0'
+        return self.pointer == self.length
+
+    def error(self):
+        msg = """Error When Parsing. At: line {0}, column {1}. """
+        return msg.format(*self.position())
+
+    def position(self):
+        line = 1
+        column = 0
+        for offset, char in enumerate(self.content):
+            if offset == self.pointer:
+                column += 1
+                break
+            if char == '\n':
+                line += 1
+                column = 0
+                continue
+            column += 1
+        return line, column

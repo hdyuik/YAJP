@@ -1,35 +1,24 @@
-from src.context import Context
 from src.parser import loads
-from src.errors import *
+from src.errors import ParseError
 
 
 class NoExRaise(Exception):
     pass
 
 
-class ExAttrNotMatch(Exception):
-    def __init__(self, key, expect, actual):
-        self.key = key
-        self.expect = expect
-        self.actual = actual
-
-    def __repr__(self):
-        return "at key: {0}, expect: {1}\nactual: {2}".format(
-            self.key, self.expect, self.actual)
+class ExNotMatch(Exception):
+    pass
 
 
 def test_right(actual, expect):
     assert actual == expect, 'test fail: expect: {0}, actual: {1}'.format(expect, actual)
 
 
-def test_error(func, exc, **exc_kvs):
+def test_error(func):
     try:
         func()
-    except exc as e:
-        for key, value in exc_kvs.items():
-            actual_value = getattr(e, key)
-            if actual_value != value:
-                raise ExAttrNotMatch(key, value, actual_value)
+    except ParseError as e:
+        pass
     else:
         raise NoExRaise()
 
@@ -70,7 +59,7 @@ def test_parse_string():
 
 
 def test_parse_array():
-    assert loads('[ 12,34    ]') == [12, 34]
+    test_right(loads('[ 12,34    ]'), [12, 34])
     assert loads('[    12,    34   ]') == [12, 34]
     assert loads('[12,34]') == [12, 34]
     assert loads('[ 12, \"WTF?\"]') == [12, "WTF?"]
@@ -90,70 +79,45 @@ def test_parse_obj():
 
 # error
 def test_no_input():
-    test_error(lambda: loads(''), NoInput)
-    test_error(lambda: loads('\r\t\n'), NoInput)
-
-
-def test_invalid_input():
-    test_error(lambda: loads("ok"), InvalidInput)
+    test_error(lambda: loads(''))
+    test_error(lambda: loads('\r\t\n'))
 
 
 def test_root_not_singular():
-    test_error(lambda: loads('true n'), RootNotSingular)
+    test_error(lambda: loads('true, null'))
 
 
 def test_invalid_number():
-    test_error(lambda: loads('123.'), InvalidInput, at=3)
-    test_error(lambda: loads('+123'), InvalidInput, at=-1)
+    test_error(lambda: loads('123.'))
+    test_error(lambda: loads('+123'))
 
 
 def test_invalid_string():
-    test_error(lambda: loads('\"'), MissQuotationMark, at=0)
-    test_error(lambda: loads('\" \b \"'), InvalidControlCharacter, at=1)
-    test_error(lambda: loads('\" \x1f \"'), InvalidControlCharacter, at=1)
-    test_error(lambda: loads('\"\\u0ac   \"'), InvalidInput)
-    test_error(lambda: loads('\"\\uZ980 \"'), InvalidInput)
-    test_error(lambda: loads('\"\\u0000'), InvalidControlCharacter)
-    test_error(lambda: loads('\"\\uD834WTF?\"'), InvalidUnicodeSurrogate)
-    test_error(lambda: loads('\"\\uD834\\uC890 \"'), InvalidUnicodeSurrogate)
+    test_error(lambda: loads('\"'))
+    test_error(lambda: loads('\" \b \"'))
+    test_error(lambda: loads('\" \x1f \"'))
+    test_error(lambda: loads('\"\\u0ac   \"'))
+    test_error(lambda: loads('\"\\uZ980 \"'))
+    test_error(lambda: loads('\"\\u0000'))
+    test_error(lambda: loads('\"\\uD834WTF?\"'))
+    test_error(lambda: loads('\"\\uD834\\uC890 \"'))
 
     # test_right(loads('\"\\uD834\\uDD1E\"'), '𝄞')
 
 
-
 def test_invalid_array():
-    test_error(lambda: loads('['), MissBracketForArray, at=0)
-    test_error(lambda: loads('[123, ]'), InvalidInput, at=5)
-    test_error(lambda: loads('[123, "jjk'), MissQuotationMark)
-    test_error(lambda: loads('[null233]'), MissComma)
-    test_error(lambda: loads('[truefalse]'), MissComma)
+    test_error(lambda: loads('['))
+    test_error(lambda: loads('[123, ]'))
+    test_error(lambda: loads('[123, "jjk'))
+    test_error(lambda: loads('[null233]'))
+    test_error(lambda: loads('[truefalse]'))
 
 
 def test_invalid_obj():
-    test_error(lambda: loads('{  '), MissBraceForObj)
-    test_error(lambda: loads('{ "ssss'), MissQuotationMark)
-    test_error(lambda: loads('{ "ss": 1, }'), InvalidInput)
-    test_error(lambda: loads('{ "ho": true"false": 1}'), MissComma)
-
-
-def test_context():
-    c = Context('123')
-    test_right(c.peek(), '1')
-    test_right(c.forward(), '1')
-    test_right(c.current(), '1')
-
-    test_right(c.forward(), '2')
-    test_right(c.forward(), '3')
-
-    test_right(c.end(), True)
-
-    c = Context('abc')
-    assert c.accept('a', 'b', 'c') is True
-    assert c.accept('b') is True
-    assert c.accept('a') is False
-
-    c = Context('abc')
-    assert c.accept('abc') is False
+    test_error(lambda: loads('{  '))
+    test_error(lambda: loads('{ "ssss'))
+    test_error(lambda: loads('{ "ss": 1, }'))
+    test_error(lambda: loads('{ "ho": true"false": 1}'))
 
 
 def test():
@@ -167,17 +131,13 @@ def test():
     test_parse_obj()
 
     test_no_input()
-    test_invalid_input()
     test_root_not_singular()
     test_invalid_number()
     test_invalid_string()
     test_invalid_array()
     test_invalid_obj()
 
-    test_context()
-
 
 if __name__ == '__main__':
     test()
     print('all test pass')
-

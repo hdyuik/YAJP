@@ -1,5 +1,5 @@
 from .context import Context
-from .errors import *
+from .errors import ParseError
 DIGIT = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 DIGIT_1_9 = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 HEX = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -16,7 +16,7 @@ def filter_space(context):
 def match_literal(context, string):
     for char in string:
         if not context.accept(char):
-            raise InvalidInput(context.pointer)
+            raise ParseError(context.error(), 'literal not match: {0}'.format(string))
     return True
 
 
@@ -37,8 +37,8 @@ def parse_false(context):
 
 # number
 def parse_number(context):
-    i = context.pointer
-    context.pointer -= 1
+    context.move(False)
+    flag = context.pointer
 
     context.accept('-')
 
@@ -48,14 +48,14 @@ def parse_number(context):
         while context.accept(*DIGIT):
             pass
     else:
-        raise InvalidInput(context.pointer)
+        raise ParseError(context.error(), 'Can not Parse Number')
 
     if context.accept('.'):
         if context.accept(*DIGIT):
             while context.accept(*DIGIT):
                 pass
         else:
-            raise InvalidInput(context.pointer)
+            raise ParseError(context.error(), 'Can not Parse Number')
 
     if context.accept('e', 'E'):
         context.accept('+', '-')
@@ -63,9 +63,8 @@ def parse_number(context):
             while context.accept(*DIGIT):
                 ...
         else:
-            raise InvalidInput(context.pointer)
-
-    return float(context[i:context.pointer+1])
+            raise ParseError(context.error(), 'Can not Parse Exponential')
+    return float(context[flag:context.pointer])
 
 
 # string
@@ -74,15 +73,15 @@ def parse_string(context):
 
     while True:
         if context.end():
-            raise MissQuotationMark(context.pointer)
+            raise ParseError(context.error(), 'Miss QuotationMark For String')
         elif context.accept('\"'):
             return s
         elif context.accept('\\'):
             s += parse_escape(context)
-        elif ord(context.peek()) < 32:
-            raise InvalidControlCharacter(context.pointer)
+        elif ord(context.look()) < 32:
+            raise ParseError(context.error(), 'Invalid Control Character')
         else:
-            s += context.forward()
+            s += context.move()
 
 
 def parse_escape(context):
@@ -97,9 +96,9 @@ def parse_escape(context):
         't': lambda ctx: '\t',
         'u': parse_unicode,
     }
-    func = d.get(context.forward(), None)
+    func = d.get(context.move(), None)
     if func is None:
-        raise InvalidInput(context.pointer)
+        raise ParseError(context.error(), 'Unknown Escape Character')
     else:
         return func(context)
 
@@ -107,27 +106,27 @@ def parse_escape(context):
 def parse_unicode(context):
     codepoint = parse_codepoint(context)
     if codepoint < 32:
-        raise InvalidControlCharacter(context.pointer)
+        raise ParseError(context.error(), 'Invalid Control Character')
     return chr(codepoint)
 
 
 def parse_codepoint(context, low_surrogate=False):
     s = ""
     for i in range(4):
-        if context.peek() in HEX:
-            s += context.forward()
+        if context.look() in HEX:
+            s += context.move()
         else:
-            raise InvalidInput(context.pointer)
+            raise ParseError(context.error(), 'Can not Parse UTF Escape')
     codepoint = int('0x' + s, 16)
     if low_surrogate:
         if not(0xDC00 <= codepoint <= 0xDFFF):
-            raise InvalidUnicodeSurrogate(context.pointer)
+            raise ParseError(context.error(), 'Invalid Low Surrogate')
         else:
             return codepoint
     else:
         if 0xD800 <= codepoint <= 0xDBFF:
             if not (context.accept('\\') and context.accept('u')):
-                raise InvalidUnicodeSurrogate(context.pointer)
+                raise ParseError(context.error(), 'Invalid Low Surrogate')
             return 0x10000 + (codepoint - 0xD800) * 0x400 + (parse_codepoint(context, low_surrogate=True) - 0xDC00)
         else:
             return codepoint
@@ -141,9 +140,10 @@ def parse_array(context):
         return ls
     while True:
         if context.end():
-            raise MissBracketForArray(context.pointer)
+            raise ParseError(context.error(), 'Miss Bracket For Array')
 
         value = parse_value(context)
+
         ls.append(value)
 
         if context.accept(']'):
@@ -151,7 +151,7 @@ def parse_array(context):
         elif context.accept(','):
             filter_space(context)
         else:
-            raise MissComma(context.pointer)
+            raise ParseError(context.error(), 'Miss Comma')
 
 
 def parse_obj(context):
@@ -161,13 +161,11 @@ def parse_obj(context):
         return obj
     while True:
         if context.end():
-            raise MissBraceForObj(context.pointer)
+            raise ParseError(context.error(), 'Miss Braces For Object')
 
         key = parse_key(context)
 
-        if not context.accept(':'):
-            raise NoColonAfterKey(context.pointer)
-        filter_space(context)
+        parse_colon(context)
 
         value = parse_value(context)
 
@@ -178,12 +176,18 @@ def parse_obj(context):
         elif context.accept(','):
             filter_space(context)
         else:
-            raise MissComma(context.pointer)
+            raise ParseError(context.error(), 'Miss Comma')
+
+
+def parse_colon(context):
+    if not context.accept(':'):
+        raise ParseError(context.error(), 'Miss Colon')
+    filter_space(context)
 
 
 def parse_key(context):
     if not context.accept('\"'):
-        raise InvalidInput(context.pointer)
+        raise ParseError(context.error(), 'Can not Parse Key')
     key = parse_string(context)
     filter_space(context)
     return key
@@ -206,7 +210,7 @@ def parse_at(context):
         '{': parse_obj,
     }
     default = parse_number
-    func = d.get(context.forward(), default)
+    func = d.get(context.move(), default)
     return func(context)
 
 
@@ -215,7 +219,7 @@ def parse(json):
     filter_space(context)
 
     if context.end():
-        raise NoInput(context.pointer)
+        raise ParseError(context.error(), 'No Input')
 
     result = parse_at(context)
 
@@ -224,7 +228,7 @@ def parse(json):
     if context.end():
         return result
     else:
-        raise RootNotSingular(context.pointer)
+        raise ParseError(context.error(), 'Root is not Singular')
 
 
 def loads(json):

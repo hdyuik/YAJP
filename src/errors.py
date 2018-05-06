@@ -1,63 +1,19 @@
-__all__ = [
-    'ParseError',
-    'InvalidInput',
-    'RootNotSingular',
-    'NoInput',
-    'MissQuotationMark',
-    'InvalidControlCharacter',
-    'MissBracketForArray',
-    'NoColonAfterKey',
-    'MissBraceForObj',
-    'MissComma',
-    'InvalidUnicodeSurrogate',
-]
-
-
 class ParseError(Exception):
-    def __init__(self, at, detail=None):
-        self.at = at
+    def __init__(self, context, detail=None):
+        self.shit = 1
+        self.context = context
         self.detail = detail
 
-    def __repr__(self):
-        return 'Error: {type}, at {at}\ndetail: {detail}'.format(
-            type=self.__class__, at=self.at, detail=self.detail)
-
-
-class InvalidInput(ParseError):
-    pass
-
-
-class RootNotSingular(ParseError):
-    pass
-
-
-class NoInput(ParseError):
-    pass
-
-
-class MissQuotationMark(ParseError):
-    pass
-
-
-class InvalidControlCharacter(ParseError):
-    pass
-
-
-class MissBracketForArray(ParseError):
-    pass
-
-
-class NoColonAfterKey(ParseError):
-    pass
-
-
-class MissBraceForObj(ParseError):
-    pass
-
-
-class MissComma(ParseError):
-    pass
-
-
-class InvalidUnicodeSurrogate(ParseError):
-    pass
+    def position(self):
+        line = 1
+        column = 0
+        for offset, char in enumerate(self.context.content):
+            if offset == self.context.pointer:
+                column += 1
+                break
+            if char == '\n':
+                line += 1
+                column = 0
+                continue
+            column += 1
+        return line, column
