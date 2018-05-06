@@ -108,25 +108,29 @@ def parse_unicode(context):
     codepoint = parse_codepoint(context)
     if codepoint < 32:
         raise InvalidControlCharacter(context.pointer)
-    elif 0xD800 <= codepoint <= 0xDBFF:
-        if not (context.accept('\\') and context.accept('u')):
-            raise InvalidUnicodeSurrogate(context.pointer)
-        low_surrogate = parse_codepoint(context)
-        if not (0xDC00 <= low_surrogate <= 0xDFFF):
-            raise InvalidUnicodeSurrogate(context.pointer)
-        codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + (low_surrogate - 0xDC00)
-
     return chr(codepoint)
 
 
-def parse_codepoint(context):
+def parse_codepoint(context, low_surrogate=False):
     s = ""
     for i in range(4):
         if context.peek() in HEX:
             s += context.forward()
         else:
             raise InvalidInput(context.pointer)
-    return int('0x' + s, 16)
+    codepoint = int('0x' + s, 16)
+    if low_surrogate:
+        if not(0xDC00 <= codepoint <= 0xDFFF):
+            raise InvalidUnicodeSurrogate(context.pointer)
+        else:
+            return codepoint
+    else:
+        if 0xD800 <= codepoint <= 0xDBFF:
+            if not (context.accept('\\') and context.accept('u')):
+                raise InvalidUnicodeSurrogate(context.pointer)
+            return 0x10000 + (codepoint - 0xD800) * 0x400 + (parse_codepoint(context, low_surrogate=True) - 0xDC00)
+        else:
+            return codepoint
 
 
 # compound
