@@ -26,10 +26,10 @@ output(dict)
 
 error
 
-    from yajp import loads, ParseError
+    from yajp import loads, DecodeError
     try:
         loads("")
-    except ParseError as e:
+    except DecodeError as e:
         print(e.line, e.column, e.description)
 
 output
@@ -76,10 +76,10 @@ escape supported(less than 32 is not a valid escape character), UTF-8 supported
 
 错误
 
-    from yajp import loads, ParseError
+    from yajp import loads, DecodeError
     try:
         loads("")
-    except ParseError as e:
+    except DecodeError as e:
         print(e.line, e.column, e.description)
 
 输出
