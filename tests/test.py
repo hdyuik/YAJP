@@ -1,5 +1,4 @@
-from src.parser import loads
-from src.errors import ParseError
+from yajp import *
 
 
 class NoExRaise(Exception):
@@ -17,7 +16,7 @@ def test_right(actual, expect):
 def test_error(func):
     try:
         func()
-    except ParseError as e:
+    except DecodeError as e:
         pass
     else:
         raise NoExRaise()

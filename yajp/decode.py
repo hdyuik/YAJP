@@ -1,5 +1,5 @@
 from .context import Context
-from .errors import ParseError
+from .errors import DecodeError
 DIGIT = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 DIGIT_1_9 = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 HEX = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -16,7 +16,7 @@ def filter_space(context):
 def match_literal(context, string):
     for char in string:
         if not context.accept(char):
-            raise ParseError(context.error(), 'literal not match: {0}'.format(string))
+            raise DecodeError(context, 'literal not match: {0}'.format(string))
     return True
 
 
@@ -48,14 +48,14 @@ def parse_number(context):
         while context.accept(*DIGIT):
             pass
     else:
-        raise ParseError(context.error(), 'Can not Parse Number')
+        raise DecodeError(context, 'Can not Parse Number')
 
     if context.accept('.'):
         if context.accept(*DIGIT):
             while context.accept(*DIGIT):
                 pass
         else:
-            raise ParseError(context.error(), 'Can not Parse Number')
+            raise DecodeError(context, 'Can not Parse Number')
 
     if context.accept('e', 'E'):
         context.accept('+', '-')
@@ -63,7 +63,7 @@ def parse_number(context):
             while context.accept(*DIGIT):
                 ...
         else:
-            raise ParseError(context.error(), 'Can not Parse Exponential')
+            raise DecodeError(context, 'Can not Parse Exponential')
     return float(context[flag:context.pointer])
 
 
@@ -73,13 +73,13 @@ def parse_string(context):
 
     while True:
         if context.end():
-            raise ParseError(context.error(), 'Miss QuotationMark For String')
+            raise DecodeError(context, 'Miss QuotationMark For String')
         elif context.accept('\"'):
             return s
         elif context.accept('\\'):
             s += parse_escape(context)
         elif ord(context.look()) < 32:
-            raise ParseError(context.error(), 'Invalid Control Character')
+            raise DecodeError(context, 'Invalid Control Character')
         else:
             s += context.move()
 
@@ -98,7 +98,7 @@ def parse_escape(context):
     }
     func = d.get(context.move(), None)
     if func is None:
-        raise ParseError(context.error(), 'Unknown Escape Character')
+        raise DecodeError(context, 'Unknown Escape Character')
     else:
         return func(context)
 
@@ -106,7 +106,7 @@ def parse_escape(context):
 def parse_unicode(context):
     codepoint = parse_codepoint(context)
     if codepoint < 32:
-        raise ParseError(context.error(), 'Invalid Control Character')
+        raise DecodeError(context, 'Invalid Control Character')
     return chr(codepoint)
 
 
@@ -116,17 +116,17 @@ def parse_codepoint(context, low_surrogate=False):
         if context.look() in HEX:
             s += context.move()
         else:
-            raise ParseError(context.error(), 'Can not Parse UTF Escape')
+            raise DecodeError(context, 'Can not Parse UTF Escape')
     codepoint = int('0x' + s, 16)
     if low_surrogate:
         if not(0xDC00 <= codepoint <= 0xDFFF):
-            raise ParseError(context.error(), 'Invalid Low Surrogate')
+            raise DecodeError(context, 'Invalid Low Surrogate')
         else:
             return codepoint
     else:
         if 0xD800 <= codepoint <= 0xDBFF:
             if not (context.accept('\\') and context.accept('u')):
-                raise ParseError(context.error(), 'Invalid Low Surrogate')
+                raise DecodeError(context, 'Invalid Low Surrogate')
             return 0x10000 + (codepoint - 0xD800) * 0x400 + (parse_codepoint(context, low_surrogate=True) - 0xDC00)
         else:
             return codepoint
@@ -140,7 +140,7 @@ def parse_array(context):
         return ls
     while True:
         if context.end():
-            raise ParseError(context.error(), 'Miss Bracket For Array')
+            raise DecodeError(context, 'Miss Bracket For Array')
 
         value = parse_value(context)
 
@@ -151,7 +151,7 @@ def parse_array(context):
         elif context.accept(','):
             filter_space(context)
         else:
-            raise ParseError(context.error(), 'Miss Comma')
+            raise DecodeError(context, 'Miss Comma')
 
 
 def parse_obj(context):
@@ -161,7 +161,7 @@ def parse_obj(context):
         return obj
     while True:
         if context.end():
-            raise ParseError(context.error(), 'Miss Braces For Object')
+            raise DecodeError(context, 'Miss Braces For Object')
 
         key = parse_key(context)
 
@@ -176,18 +176,18 @@ def parse_obj(context):
         elif context.accept(','):
             filter_space(context)
         else:
-            raise ParseError(context.error(), 'Miss Comma')
+            raise DecodeError(context, 'Miss Comma')
 
 
 def parse_colon(context):
     if not context.accept(':'):
-        raise ParseError(context.error(), 'Miss Colon')
+        raise DecodeError(context, 'Miss Colon')
     filter_space(context)
 
 
 def parse_key(context):
     if not context.accept('\"'):
-        raise ParseError(context.error(), 'Can not Parse Key')
+        raise DecodeError(context, 'Can not Parse Key')
     key = parse_string(context)
     filter_space(context)
     return key
@@ -219,7 +219,7 @@ def parse(json):
     filter_space(context)
 
     if context.end():
-        raise ParseError(context.error(), 'No Input')
+        raise DecodeError(context, 'No Input')
 
     result = parse_at(context)
 
@@ -228,7 +228,7 @@ def parse(json):
     if context.end():
         return result
     else:
-        raise ParseError(context.error(), 'Root is not Singular')
+        raise DecodeError(context, 'Root is not Singular')
 
 
 def loads(json):
